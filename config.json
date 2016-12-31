@@ -1,0 +1,19 @@
+{
+	"description": "jsonfilelog as plugin",
+	"documentation": "-",
+	"entrypoint": ["/usr/bin/docker-log-driver"],
+	"interface": {
+		"types": ["docker.logdriver/1.0"],
+		"socket": "jsonfile.sock"
+	},
+	"env": [
+		{
+			"name": "LOG_LEVEL",
+			"description": "Set log level to output for plugin logs",
+			"value": "info",
+			"settable": ["value"]
+		}
+	]
+}
+
+
