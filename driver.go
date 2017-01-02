@@ -27,6 +27,7 @@ type driver struct {
 type logPair struct {
 	l      logger.Logger
 	stream io.ReadCloser
+	info   logger.Info
 }
 
 func newDriver() *driver {
@@ -62,7 +63,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	}
 
 	d.mu.Lock()
-	lf := &logPair{l, f}
+	lf := &logPair{l, f, logCtx}
 	d.logs[file] = lf
 	d.idx[logCtx.ContainerID] = lf
 	d.mu.Unlock()
@@ -89,14 +90,14 @@ func consumeLog(lf *logPair) {
 		var msg logger.Message
 		if err := dec.Decode(&msg); err != nil {
 			if err == io.EOF {
-				logrus.WithError(err).Debug("shutting down log logger")
+				logrus.WithField("id", lf.Info.ContainerID).WithError(err).Debug("shutting down log logger")
 				lf.stream.Close()
 				return
 			}
 			dec = json.NewDecoder(lf.stream)
 		}
 		if err := lf.l.Log(&msg); err != nil {
-			logrus.WithError(err).WithField("message", msg).Error("error writing log message")
+			logrus.WithField("id", lf.Info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
 			continue
 		}
 		logrus.WithField("message", msg).Debugf("received message")
@@ -124,7 +125,11 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 
 		for {
 			select {
-			case msg := <-watcher.Msg:
+			case msg, ok := <-watcher.Msg:
+				if !ok {
+					w.Close()
+					return
+				}
 				if err := enc.Encode(msg); err != nil {
 					w.CloseWithError(err)
 					return
