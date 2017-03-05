@@ -30,7 +30,7 @@ type ReadLogsRequest struct {
 }
 
 func handlers(h *sdk.Handler, d *driver) {
-	h.HandleFunc("/LoggingDriver.StartLogging", func(w http.ResponseWriter, r *http.Request) {
+	h.HandleFunc("/LogDriver.StartLogging", func(w http.ResponseWriter, r *http.Request) {
 		var req StartLoggingRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -40,7 +40,7 @@ func handlers(h *sdk.Handler, d *driver) {
 		respond(err, w)
 	})
 
-	h.HandleFunc("/LoggingDriver.StopLogging", func(w http.ResponseWriter, r *http.Request) {
+	h.HandleFunc("/LogDriver.StopLogging", func(w http.ResponseWriter, r *http.Request) {
 		var req StopLoggingRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -50,13 +50,13 @@ func handlers(h *sdk.Handler, d *driver) {
 		respond(err, w)
 	})
 
-	h.HandleFunc("/LoggingDriver.Capabilities", func(w http.ResponseWriter, r *http.Request) {
+	h.HandleFunc("/LogDriver.Capabilities", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(&CapabilitiesResponse{
 			Cap: logger.Capability{ReadLogs: true},
 		})
 	})
 
-	h.HandleFunc("/LoggingDriver.ReadLogs", func(w http.ResponseWriter, r *http.Request) {
+	h.HandleFunc("/LogDriver.ReadLogs", func(w http.ResponseWriter, r *http.Request) {
 		var req ReadLogsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

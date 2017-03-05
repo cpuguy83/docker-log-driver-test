@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +13,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
+	protoio "github.com/gogo/protobuf/io"
 	"github.com/pkg/errors"
 	"github.com/tonistiigi/fifo"
 )
@@ -85,21 +86,32 @@ func (d *driver) StopLogging(file string) error {
 }
 
 func consumeLog(lf *logPair) {
-	dec := json.NewDecoder(lf.stream)
+	dec := protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
+	defer dec.Close()
+	var buf logger.PluginLogEntry
 	for {
-		var msg logger.Message
-		if err := dec.Decode(&msg); err != nil {
+		if err := dec.ReadMsg(&buf); err != nil {
 			if err == io.EOF {
-				logrus.WithField("id", lf.Info.ContainerID).WithError(err).Debug("shutting down log logger")
+				logrus.WithField("id", lf.info.ContainerID).WithError(err).Debug("shutting down log logger")
 				lf.stream.Close()
 				return
 			}
-			dec = json.NewDecoder(lf.stream)
+			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
 		}
+		var msg logger.Message
+		msg.Line = buf.Line
+		msg.Source = buf.Source
+		msg.Partial = buf.Partial
+		if buf.Timestamp != nil {
+			msg.Timestamp = *buf.Timestamp
+		}
+
 		if err := lf.l.Log(&msg); err != nil {
-			logrus.WithField("id", lf.Info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
+			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
 			continue
 		}
+
+		buf.Reset()
 		logrus.WithField("message", msg).Debugf("received message")
 	}
 }
@@ -120,9 +132,12 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 
 	go func() {
 		watcher := lr.ReadLogs(config)
-		enc := json.NewEncoder(w)
+
+		enc := protoio.NewUint32DelimitedWriter(w, binary.BigEndian)
+		defer enc.Close()
 		defer watcher.Close()
 
+		var buf logger.PluginLogEntry
 		for {
 			select {
 			case msg, ok := <-watcher.Msg:
@@ -130,7 +145,13 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 					w.Close()
 					return
 				}
-				if err := enc.Encode(msg); err != nil {
+
+				buf.Line = msg.Line
+				buf.Partial = msg.Partial
+				buf.Timestamp = &msg.Timestamp
+				buf.Source = msg.Source
+
+				if err := enc.WriteMsg(&buf); err != nil {
 					w.CloseWithError(err)
 					return
 				}
@@ -138,6 +159,8 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 				w.CloseWithError(err)
 				return
 			}
+
+			buf.Reset()
 		}
 	}()
 
