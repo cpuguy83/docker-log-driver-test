@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	protoio "github.com/gogo/protobuf/io"
@@ -57,7 +59,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 		return errors.Wrap(err, "error creating jsonfile logger")
 	}
 
-	logrus.WithField("id", logCtx.ContainerID).WithField("file", file).Debugf("Start logging")
+	logrus.WithField("id", logCtx.ContainerID).WithField("file", file).WithField("logpath", logCtx.LogPath).Debugf("Start logging")
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
 		return errors.Wrapf(err, "error opening logger fifo: %q", file)
@@ -88,7 +90,7 @@ func (d *driver) StopLogging(file string) error {
 func consumeLog(lf *logPair) {
 	dec := protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
 	defer dec.Close()
-	var buf logger.PluginLogEntry
+	var buf logdriver.LogEntry
 	for {
 		if err := dec.ReadMsg(&buf); err != nil {
 			if err == io.EOF {
@@ -102,9 +104,7 @@ func consumeLog(lf *logPair) {
 		msg.Line = buf.Line
 		msg.Source = buf.Source
 		msg.Partial = buf.Partial
-		if buf.Timestamp != nil {
-			msg.Timestamp = *buf.Timestamp
-		}
+		msg.Timestamp = time.Unix(0, buf.TimeNano)
 
 		if err := lf.l.Log(&msg); err != nil {
 			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
@@ -112,7 +112,6 @@ func consumeLog(lf *logPair) {
 		}
 
 		buf.Reset()
-		logrus.WithField("message", msg).Debugf("received message")
 	}
 }
 
@@ -137,7 +136,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 		defer enc.Close()
 		defer watcher.Close()
 
-		var buf logger.PluginLogEntry
+		var buf logdriver.LogEntry
 		for {
 			select {
 			case msg, ok := <-watcher.Msg:
@@ -148,7 +147,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 
 				buf.Line = msg.Line
 				buf.Partial = msg.Partial
-				buf.Timestamp = &msg.Timestamp
+				buf.TimeNano = msg.Timestamp.UnixNano()
 				buf.Source = msg.Source
 
 				if err := enc.WriteMsg(&buf); err != nil {

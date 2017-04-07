@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -11,8 +12,8 @@ import (
 )
 
 type StartLoggingRequest struct {
-	File       string
-	LogContext logger.Info
+	File string
+	Info logger.Info
 }
 
 type StopLoggingRequest struct {
@@ -36,7 +37,12 @@ func handlers(h *sdk.Handler, d *driver) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		err := d.StartLogging(req.File, req.LogContext)
+		if req.Info.ContainerID == "" {
+			respond(errors.New("must provide container id in log context"), w)
+			return
+		}
+
+		err := d.StartLogging(req.File, req.Info)
 		respond(err, w)
 	})
 
