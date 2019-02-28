@@ -103,7 +103,11 @@ func consumeLog(lf *logPair) {
 		var msg logger.Message
 		msg.Line = buf.Line
 		msg.Source = buf.Source
-		msg.Partial = buf.Partial
+		if buf.PartialLogMetadata != nil {
+			msg.PLogMetaData.ID = buf.PartialLogMetadata.Id
+			msg.PLogMetaData.Last = buf.PartialLogMetadata.Last
+			msg.PLogMetaData.Ordinal = int(buf.PartialLogMetadata.Ordinal)
+		}
 		msg.Timestamp = time.Unix(0, buf.TimeNano)
 
 		if err := lf.l.Log(&msg); err != nil {
@@ -134,7 +138,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 
 		enc := protoio.NewUint32DelimitedWriter(w, binary.BigEndian)
 		defer enc.Close()
-		defer watcher.Close()
+		defer watcher.ConsumerGone()
 
 		var buf logdriver.LogEntry
 		for {
@@ -146,7 +150,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 				}
 
 				buf.Line = msg.Line
-				buf.Partial = msg.Partial
+				buf.Partial = msg.PLogMetaData != nil
 				buf.TimeNano = msg.Timestamp.UnixNano()
 				buf.Source = msg.Source
 
