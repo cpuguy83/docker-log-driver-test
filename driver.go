@@ -99,7 +99,7 @@ func consumeLog(lf *logPair) {
 				return
 			}
 			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
-            continue
+			continue
 		}
 		var msg logger.Message
 		msg.Line = buf.Line
