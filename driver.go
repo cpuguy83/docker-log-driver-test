@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/containerd/fifo"
+	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
@@ -105,6 +106,7 @@ func consumeLog(lf *logPair) {
 		msg.Line = buf.Line
 		msg.Source = buf.Source
 		if buf.PartialLogMetadata != nil {
+			msg.PLogMetaData = &backend.PartialLogMetaData{}
 			msg.PLogMetaData.ID = buf.PartialLogMetadata.Id
 			msg.PLogMetaData.Last = buf.PartialLogMetadata.Last
 			msg.PLogMetaData.Ordinal = int(buf.PartialLogMetadata.Ordinal)
