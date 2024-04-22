@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
@@ -105,9 +106,11 @@ func consumeLog(lf *logPair) {
 		msg.Line = buf.Line
 		msg.Source = buf.Source
 		if buf.PartialLogMetadata != nil {
-			msg.PLogMetaData.ID = buf.PartialLogMetadata.Id
-			msg.PLogMetaData.Last = buf.PartialLogMetadata.Last
-			msg.PLogMetaData.Ordinal = int(buf.PartialLogMetadata.Ordinal)
+			msg.PLogMetaData = &backend.PartialLogMetaData{
+				ID:      buf.PartialLogMetadata.Id,
+				Last:    buf.PartialLogMetadata.Last,
+				Ordinal: int(buf.PartialLogMetadata.Ordinal),
+			}
 		}
 		msg.Timestamp = time.Unix(0, buf.TimeNano)
 
