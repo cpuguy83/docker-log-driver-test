@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/sdk"
+	"github.com/sirupsen/logrus"
 )
 
 var logLevels = map[string]logrus.Level{
@@ -27,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	h := sdk.NewHandler(`{"Implements": ["LoggingDriver"]}`)
+	h := sdk.NewHandler(`{"Implements": ["LogDriver"]}`)
 	handlers(&h, newDriver())
 	if err := h.ServeUnix("jsonfile", 0); err != nil {
 		panic(err)
