@@ -1,4 +1,0 @@
-FROM  golang:1.15
-
-COPY . /go/src/github.com/cpuguy83/docker-log-driver
-RUN cd /go/src/github.com/cpuguy83/docker-log-driver && go build --ldflags '-extldflags "-static"' -o /usr/bin/docker-log-driver

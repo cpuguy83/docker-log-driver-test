@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/containerd/fifo"
+	"github.com/containerd/log"
 	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	protoio "github.com/gogo/protobuf/io"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -53,17 +53,21 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 		logCtx.LogPath = filepath.Join("/var/log/docker", logCtx.ContainerID)
 	}
 	if err := os.MkdirAll(filepath.Dir(logCtx.LogPath), 0755); err != nil {
-		return errors.Wrap(err, "error setting up logger dir")
+		return fmt.Errorf("error setting up logger dir: %w", err)
 	}
 	l, err := jsonfilelog.New(logCtx)
 	if err != nil {
-		return errors.Wrap(err, "error creating jsonfile logger")
+		return fmt.Errorf("error creating jsonfile logger: %w", err)
 	}
 
-	logrus.WithField("id", logCtx.ContainerID).WithField("file", file).WithField("logpath", logCtx.LogPath).Debugf("Start logging")
+	log.G(context.TODO()).WithFields(logrus.Fields{
+		"id":       logCtx.ContainerID,
+		"file":     file,
+		"log_path": logCtx.LogPath,
+	}).Debug("Start logging")
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
-		return errors.Wrapf(err, "error opening logger fifo: %q", file)
+		return fmt.Errorf("error opening logger fifo: %q: %w", file, err)
 	}
 
 	d.mu.Lock()
@@ -77,11 +81,11 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 }
 
 func (d *driver) StopLogging(file string) error {
-	logrus.WithField("file", file).Debugf("Stop logging")
+	log.G(context.TODO()).WithField("file", file).Debugf("Stop logging")
 	d.mu.Lock()
 	lf, ok := d.logs[file]
 	if ok {
-		lf.stream.Close()
+		_ = lf.stream.Close()
 		delete(d.logs, file)
 	}
 	d.mu.Unlock()
@@ -95,26 +99,35 @@ func consumeLog(lf *logPair) {
 	for {
 		if err := dec.ReadMsg(&buf); err != nil {
 			if err == io.EOF {
-				logrus.WithField("id", lf.info.ContainerID).WithError(err).Debug("shutting down log logger")
-				lf.stream.Close()
+				log.G(context.TODO()).WithFields(logrus.Fields{
+					"error": err,
+					"id":    lf.info.ContainerID,
+				}).Debug("shutting down log logger")
+				_ = lf.stream.Close()
 				return
 			}
 			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
 			continue
 		}
-		var msg logger.Message
-		msg.Line = buf.Line
-		msg.Source = buf.Source
-		if buf.PartialLogMetadata != nil {
-			msg.PLogMetaData = &backend.PartialLogMetaData{}
-			msg.PLogMetaData.ID = buf.PartialLogMetadata.Id
-			msg.PLogMetaData.Last = buf.PartialLogMetadata.Last
-			msg.PLogMetaData.Ordinal = int(buf.PartialLogMetadata.Ordinal)
+		msg := logger.Message{
+			Line:      buf.Line,
+			Source:    buf.Source,
+			Timestamp: time.Unix(0, buf.TimeNano),
 		}
-		msg.Timestamp = time.Unix(0, buf.TimeNano)
+		if buf.PartialLogMetadata != nil {
+			msg.PLogMetaData = &backend.PartialLogMetaData{
+				ID:      buf.PartialLogMetadata.Id,
+				Last:    buf.PartialLogMetadata.Last,
+				Ordinal: int(buf.PartialLogMetadata.Ordinal),
+			}
+		}
 
 		if err := lf.l.Log(&msg); err != nil {
-			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
+			log.G(context.TODO()).WithFields(logrus.Fields{
+				"error":   err,
+				"id":      lf.info.ContainerID,
+				"message": msg,
+			}).Error("error writing log message")
 			continue
 		}
 
@@ -137,7 +150,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 	}
 
 	go func() {
-		watcher := lr.ReadLogs(config)
+		watcher := lr.ReadLogs(context.TODO(), config)
 
 		enc := protoio.NewUint32DelimitedWriter(w, binary.BigEndian)
 		defer enc.Close()
