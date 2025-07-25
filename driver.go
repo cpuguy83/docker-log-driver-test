@@ -17,7 +17,6 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	protoio "github.com/gogo/protobuf/io"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -53,17 +52,17 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 		logCtx.LogPath = filepath.Join("/var/log/docker", logCtx.ContainerID)
 	}
 	if err := os.MkdirAll(filepath.Dir(logCtx.LogPath), 0755); err != nil {
-		return errors.Wrap(err, "error setting up logger dir")
+		return fmt.Errorf("error setting up logger dir: %w", err)
 	}
 	l, err := jsonfilelog.New(logCtx)
 	if err != nil {
-		return errors.Wrap(err, "error creating jsonfile logger")
+		return fmt.Errorf("error creating jsonfile logger: %w", err)
 	}
 
 	logrus.WithField("id", logCtx.ContainerID).WithField("file", file).WithField("logpath", logCtx.LogPath).Debugf("Start logging")
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
-		return errors.Wrapf(err, "error opening logger fifo: %q", file)
+		return fmt.Errorf("error opening logger fifo: %q: %w", file, err)
 	}
 
 	d.mu.Lock()
