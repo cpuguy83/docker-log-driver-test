@@ -102,16 +102,18 @@ func consumeLog(lf *logPair) {
 			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
 			continue
 		}
-		var msg logger.Message
-		msg.Line = buf.Line
-		msg.Source = buf.Source
-		if buf.PartialLogMetadata != nil {
-			msg.PLogMetaData = &backend.PartialLogMetaData{}
-			msg.PLogMetaData.ID = buf.PartialLogMetadata.Id
-			msg.PLogMetaData.Last = buf.PartialLogMetadata.Last
-			msg.PLogMetaData.Ordinal = int(buf.PartialLogMetadata.Ordinal)
+		msg := logger.Message{
+			Line:      buf.Line,
+			Source:    buf.Source,
+			Timestamp: time.Unix(0, buf.TimeNano),
 		}
-		msg.Timestamp = time.Unix(0, buf.TimeNano)
+		if buf.PartialLogMetadata != nil {
+			msg.PLogMetaData = &backend.PartialLogMetaData{
+				ID:      buf.PartialLogMetadata.Id,
+				Last:    buf.PartialLogMetadata.Last,
+				Ordinal: int(buf.PartialLogMetadata.Ordinal),
+			}
+		}
 
 		if err := lf.l.Log(&msg); err != nil {
 			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
