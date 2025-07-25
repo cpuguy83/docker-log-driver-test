@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/containerd/fifo"
+	"github.com/containerd/log"
 	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
@@ -59,7 +60,11 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 		return fmt.Errorf("error creating jsonfile logger: %w", err)
 	}
 
-	logrus.WithField("id", logCtx.ContainerID).WithField("file", file).WithField("logpath", logCtx.LogPath).Debugf("Start logging")
+	log.G(context.TODO()).WithFields(logrus.Fields{
+		"id":       logCtx.ContainerID,
+		"file":     file,
+		"log_path": logCtx.LogPath,
+	}).Debug("Start logging")
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
 		return fmt.Errorf("error opening logger fifo: %q: %w", file, err)
@@ -76,11 +81,11 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 }
 
 func (d *driver) StopLogging(file string) error {
-	logrus.WithField("file", file).Debugf("Stop logging")
+	log.G(context.TODO()).WithField("file", file).Debugf("Stop logging")
 	d.mu.Lock()
 	lf, ok := d.logs[file]
 	if ok {
-		lf.stream.Close()
+		_ = lf.stream.Close()
 		delete(d.logs, file)
 	}
 	d.mu.Unlock()
@@ -94,8 +99,11 @@ func consumeLog(lf *logPair) {
 	for {
 		if err := dec.ReadMsg(&buf); err != nil {
 			if err == io.EOF {
-				logrus.WithField("id", lf.info.ContainerID).WithError(err).Debug("shutting down log logger")
-				lf.stream.Close()
+				log.G(context.TODO()).WithFields(logrus.Fields{
+					"error": err,
+					"id":    lf.info.ContainerID,
+				}).Debug("shutting down log logger")
+				_ = lf.stream.Close()
 				return
 			}
 			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
@@ -115,7 +123,11 @@ func consumeLog(lf *logPair) {
 		}
 
 		if err := lf.l.Log(&msg); err != nil {
-			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
+			log.G(context.TODO()).WithFields(logrus.Fields{
+				"error":   err,
+				"id":      lf.info.ContainerID,
+				"message": msg,
+			}).Error("error writing log message")
 			continue
 		}
 
